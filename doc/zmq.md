@@ -96,7 +96,7 @@ ZeroMQ endpoint specifiers for TCP (and others) are documented in the
 Client side, then, the ZeroMQ subscriber socket must have the
 ZMQ_SUBSCRIBE option set to one or either of these prefixes (for
 instance, just `hash`); without doing so will result in no messages
-arriving. Please see `contrib/zmq/zmq_sub.py` for a working example.
+arriving. Please see [`contrib/zmq/zmq_sub.py`](/contrib/zmq/zmq_sub.py) for a working example.
 
 ## Remarks
 
@@ -111,7 +111,9 @@ using other means such as firewalling.
 
 Note that when the block chain tip changes, a reorganisation may occur
 and just the tip will be notified. It is up to the subscriber to
-retrieve the chain from the last known block to the new tip.
+retrieve the chain from the last known block to the new tip. Also note
+that no notification occurs if the tip was in the active chain - this
+is the case after calling invalidateblock RPC.
 
 There are several possibilities that ZMQ notification can get lost
 during transmission depending on the communication type you are

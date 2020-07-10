@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-2019 The Bitcoin Core developers
+# Copyright (c) 2014-2020 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test RPCs related to blockchainstate.
@@ -49,6 +49,7 @@ class BlockchainTest(BitcoinTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
+        self.supports_cli = False
 
     def run_test(self):
         self.mine_chain()
@@ -78,7 +79,6 @@ class BlockchainTest(BitcoinTestFramework):
 
         keys = [
             'bestblockhash',
-            'bip9_softforks',
             'blocks',
             'chain',
             'chainwork',
@@ -124,6 +124,31 @@ class BlockchainTest(BitcoinTestFramework):
         assert_equal(res['prune_target_size'], 576716800)
         assert_greater_than(res['size_on_disk'], 0)
 
+        assert_equal(res['softforks'], {
+            'bip34': {'type': 'buried', 'active': False, 'height': 500},
+            'bip66': {'type': 'buried', 'active': False, 'height': 1251},
+            'bip65': {'type': 'buried', 'active': False, 'height': 1351},
+            'csv': {'type': 'buried', 'active': False, 'height': 432},
+            'segwit': {'type': 'buried', 'active': True, 'height': 0},
+            'testdummy': {
+                'type': 'bip9',
+                'bip9': {
+                    'status': 'started',
+                    'bit': 28,
+                    'start_time': 0,
+                    'timeout': 0x7fffffffffffffff,  # testdummy does not have a timeout so is set to the max int64 value
+                    'since': 144,
+                    'statistics': {
+                        'period': 144,
+                        'threshold': 108,
+                        'elapsed': 57,
+                        'count': 57,
+                        'possible': True,
+                    },
+                },
+                'active': False}
+        })
+
     def _test_getchaintxstats(self):
         self.log.info("Test getchaintxstats")
 
@@ -162,6 +187,7 @@ class BlockchainTest(BitcoinTestFramework):
         assert_equal(chaintxstats['time'], b200['time'])
         assert_equal(chaintxstats['txcount'], 201)
         assert_equal(chaintxstats['window_final_block_hash'], b200_hash)
+        assert_equal(chaintxstats['window_final_block_height'], 200)
         assert_equal(chaintxstats['window_block_count'], 199)
         assert_equal(chaintxstats['window_tx_count'], 199)
         assert_equal(chaintxstats['window_interval'], time_diff)
@@ -171,6 +197,7 @@ class BlockchainTest(BitcoinTestFramework):
         assert_equal(chaintxstats['time'], b1['time'])
         assert_equal(chaintxstats['txcount'], 2)
         assert_equal(chaintxstats['window_final_block_hash'], b1_hash)
+        assert_equal(chaintxstats['window_final_block_height'], 1)
         assert_equal(chaintxstats['window_block_count'], 0)
         assert 'window_tx_count' not in chaintxstats
         assert 'window_interval' not in chaintxstats
@@ -213,6 +240,17 @@ class BlockchainTest(BitcoinTestFramework):
         # compared between res and res3.  Everything else should be the same.
         del res['disk_size'], res3['disk_size']
         assert_equal(res, res3)
+
+        self.log.info("Test hash_type option for gettxoutsetinfo()")
+        # Adding hash_type 'hash_serialized_2', which is the default, should
+        # not change the result.
+        res4 = node.gettxoutsetinfo(hash_type='hash_serialized_2')
+        del res4['disk_size']
+        assert_equal(res, res4)
+
+        # hash_type none should not return a UTXO set hash.
+        res5 = node.gettxoutsetinfo(hash_type='none')
+        assert 'hash_serialized_2' not in res5
 
     def _test_getblockheader(self):
         node = self.nodes[0]
@@ -288,8 +326,7 @@ class BlockchainTest(BitcoinTestFramework):
         def solve_and_send_block(prevhash, height, time):
             b = create_block(prevhash, create_coinbase(height), time)
             b.solve()
-            node.p2p.send_message(msg_block(b))
-            node.p2p.sync_with_ping()
+            node.p2p.send_and_ping(msg_block(b))
             return b
 
         b21f = solve_and_send_block(int(b20hash, 16), 21, b20['time'] + 1)
